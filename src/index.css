@@ -1,0 +1,518 @@
+/*
+ * MusicGrid visual system.
+ * Input: component class names from App.tsx and the browser viewport.
+ * Output: the responsive pixel-art welcome screen and orchestra stage.
+ * Processing: builds performers, platforms, spotlights, and lamps from CSS
+ * shapes, gradients, color states, and transitions; no layout grid is shown.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  font-family: "Silkscreen", monospace;
+  color: #fff;
+  background: #050505;
+  font-synthesis: none;
+  image-rendering: pixelated;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; min-height: 100%; margin: 0; }
+button { font: inherit; }
+
+.game-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 45%, #221811 0, #0d0b09 38%, #030303 72%),
+    #050505;
+}
+
+.game {
+  position: relative;
+  width: min(100vw, 177.777vh);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    linear-gradient(90deg, transparent 49.8%, #1b161244 50%, transparent 50.2%),
+    radial-gradient(ellipse at 50% 58%, #291b10 0, #0c0a08 43%, #020202 78%);
+  box-shadow: 0 0 90px #000;
+  user-select: none;
+}
+
+.game::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #00000024 3px 4px);
+  mix-blend-mode: multiply;
+}
+
+header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 20;
+  height: 15.5%;
+  border-bottom: 1px solid #6f503647;
+  background: linear-gradient(#050505f2, #090706d9 74%, transparent);
+}
+
+.section-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  width: 72%;
+  margin: 1.25% auto 0;
+}
+
+.section-label {
+  padding: 0.35rem;
+  border-right: 1px solid #8b6f5555;
+  color: #cbc4bc;
+  font-size: clamp(6px, 0.63vw, 12px);
+  letter-spacing: 0.24em;
+  text-align: center;
+}
+.section-label:last-child { border: 0; }
+
+.song-row {
+  display: flex;
+  align-items: center;
+  gap: 4%;
+  width: 70%;
+  margin: 1.5% auto 0;
+}
+.song-name {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 25%;
+  color: #e8e3dd;
+  font-size: clamp(6px, 0.55vw, 10px);
+  letter-spacing: 0.14em;
+}
+.song-number { color: #9e6f43; }
+.progress-wrap { display: flex; align-items: center; gap: 1rem; flex: 1; }
+.progress-track {
+  height: 3px;
+  flex: 1;
+  background: #4a4038;
+  box-shadow: 0 1px #000;
+}
+.progress-fill {
+  position: relative;
+  width: 52%;
+  height: 100%;
+  background: #c69a65;
+}
+.progress-fill::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: -2px;
+  width: 6px;
+  height: 7px;
+  background: #f1d0a8;
+  box-shadow: 0 0 8px #d59e5b;
+}
+.time { color: #89847f; font-size: clamp(5px, 0.48vw, 9px); white-space: nowrap; }
+
+.instruction-pair {
+  position: absolute;
+  z-index: 22;
+  top: 17%;
+  left: 50%;
+  display: flex;
+  gap: 1.1vw;
+  transform: translateX(-50%);
+}
+.instruction-card {
+  width: clamp(155px, 14vw, 270px);
+  padding: 0.65vw;
+  border: 2px solid #70563c;
+  background: #0b0908e8;
+  box-shadow: inset 0 0 0 2px #1f1812, 5px 5px 0 #0008;
+}
+.instruction-card--idle { opacity: .65; }
+.card-topline {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 0.4vw;
+  border-bottom: 1px solid #59442f;
+  color: #948b82;
+  font-size: clamp(5px, 0.5vw, 9px);
+  letter-spacing: 0.15em;
+}
+.status-pip { width: 6px; height: 6px; background: #4b4540; }
+.status-pip--live { background: #64bd5c; box-shadow: 0 0 7px #6ae05e; }
+.instruction-body { display: flex; align-items: center; gap: 1vw; padding-top: 0.5vw; }
+.instruction-body strong { display: block; font: 400 clamp(8px, 0.8vw, 15px) "Press Start 2P"; }
+.volume-copy { display: block; margin-top: .38vw; font-size: clamp(6px, .5vw, 10px); letter-spacing: .16em; }
+.volume-copy--green { color: #62c866; }
+.volume-copy--yellow { color: #eccd54; }
+.volume-copy--red { color: #d95b4e; }
+
+.pixel-icon { position: relative; display: block; width: 28px; height: 28px; flex: 0 0 28px; }
+.pixel-icon i { position: absolute; display: block; }
+.mic-head { left: 5px; top: 1px; width: 12px; height: 14px; background: #bbb; border: 3px solid #3a3633; box-shadow: inset 3px 0 #777; }
+.mic-stick { left: 15px; top: 13px; width: 4px; height: 15px; background: #9a754c; transform: rotate(-35deg); }
+.drum-top { left: 3px; top: 7px; width: 22px; height: 6px; background: #d3b67e; border: 2px solid #60472f; }
+.drum-body { left: 6px; top: 13px; width: 16px; height: 12px; background: #8f3d2c; border: 3px solid #4b2b20; }
+.drum-stick { left: 14px; top: 0; width: 3px; height: 14px; background: #ddc28d; transform: rotate(45deg); }
+.guitar-icon-body { left: 3px; top: 13px; width: 14px; height: 14px; background: #a85a2e; border: 3px solid #5d2e20; transform: rotate(-18deg); }
+.guitar-icon-body--bass { background: #496b70; border-color: #293f43; }
+.guitar-icon-neck { left: 15px; top: 2px; width: 4px; height: 15px; background: #bd7650; transform: rotate(35deg); }
+.piano-icon-case { left: 2px; top: 6px; width: 24px; height: 18px; border: 3px solid #282528; background: #5a4c45; }
+.piano-icon-keys { left: 5px; top: 14px; width: 18px; height: 6px; background: repeating-linear-gradient(90deg, #ddd 0 3px, #343034 3px 4px); }
+.synth-icon-pad { left: 2px; top: 5px; width: 24px; height: 20px; border: 3px solid #342a3c; background: #62516c; }
+.synth-icon-dot { width: 4px; height: 4px; top: 10px; background: #d3a759; }
+.synth-icon-dot--one { left: 8px; }
+.synth-icon-dot--two { left: 16px; background: #6ec1a4; }
+
+.brand {
+  position: absolute;
+  z-index: 25;
+  top: 1.9%;
+  left: 2%;
+  padding: .5rem;
+  border: 0;
+  color: #a77b4e;
+  background: transparent;
+  font: 400 clamp(8px, .72vw, 14px) "Press Start 2P";
+  letter-spacing: .12em;
+  cursor: pointer;
+}
+.control-hint {
+  position: absolute;
+  z-index: 20;
+  top: 10.2%;
+  right: 2.4%;
+  color: #bba58b;
+  font-size: clamp(5px, .43vw, 8px);
+}
+.control-hint span { margin-left: .5rem; color: #5f574f; }
+
+.transport-controls { position: absolute; z-index: 26; top: 12.2%; left: 50%; display: flex; align-items: center; gap: .5rem; transform: translateX(-50%); white-space: nowrap; }
+.transport-controls button { padding: .28rem .5rem; border: 1px solid #755739; color: #e7d7c1; background: #17100c; font: 400 clamp(5px, .42vw, 8px) "Press Start 2P"; cursor: pointer; }
+.transport-controls button:disabled { opacity: .55; cursor: wait; }
+.transport-controls span { color: #9f8c75; font-size: clamp(5px, .4vw, 8px); letter-spacing: .04em; }
+.hand-marker { position: absolute; z-index: 19; width: clamp(7px, .65vw, 12px); height: clamp(7px, .65vw, 12px); border: 2px solid #f5d8ad; transform: translate(-50%, -50%); box-shadow: 0 0 7px #edbd7d; pointer-events: none; }
+.hand-marker--left { background: #64bd5c; }
+.hand-marker--right { background: #72aadd; }
+
+.orchestra {
+  position: absolute;
+  z-index: 4;
+  top: 31%;
+  left: 10.5%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.15%;
+  width: 79%;
+  height: 39%;
+}
+.orchestra-bay { position: relative; min-width: 0; transition: filter 180ms ease; }
+.spotlight {
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  bottom: 3%;
+  width: 130%;
+  height: 155%;
+  transform: translateX(-50%);
+  background: linear-gradient(105deg, transparent 25%, #c6924e0c 47%, #e3b56b16 54%, transparent 75%);
+  clip-path: polygon(40% 0, 60% 0, 91% 100%, 9% 100%);
+  opacity: .35;
+  transition: opacity 250ms, filter 250ms;
+}
+.spotlight--low {
+  opacity: .5;
+  filter: drop-shadow(0 0 5px #ba65452f);
+  background: linear-gradient(105deg, transparent 20%, #a76d4510 40%, #d38b5540 53%, transparent 80%);
+}
+.spotlight--medium {
+  opacity: .74;
+  filter: drop-shadow(0 0 9px #d6a25542);
+  background: linear-gradient(105deg, transparent 20%, #c6934518 40%, #ecc96a48 53%, transparent 80%);
+}
+.spotlight--high {
+  opacity: 1;
+  filter: drop-shadow(0 0 12px #dbab6555);
+  background: linear-gradient(105deg, transparent 20%, #d7a65a18 40%, #ffd9954a 53%, transparent 80%);
+}
+.platform-shadow {
+  position: absolute;
+  left: 4%;
+  right: 2%;
+  bottom: -3%;
+  height: 17%;
+  background: #000;
+  filter: blur(8px);
+}
+.platform {
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  bottom: 0;
+  height: 30%;
+  border: 3px solid #2b170e;
+  background:
+    repeating-linear-gradient(90deg, #5b321c 0 14%, #3f2114 14.5% 15%, #673a20 15.5% 29%),
+    #4f2a18;
+  box-shadow: inset 0 5px #80502c, inset 0 -6px #21110b, 0 7px 0 #180d09;
+  transform: perspective(270px) rotateX(3deg);
+  transition: filter 250ms, box-shadow 250ms;
+}
+.orchestra-bay--low .platform {
+  filter: brightness(.82) saturate(.9);
+  box-shadow: inset 0 5px #754329, inset 0 -6px #21110b, 0 7px 0 #180d09, 0 0 7px #8f49332e;
+}
+.orchestra-bay--medium .platform {
+  filter: brightness(1.08) saturate(1.03);
+  box-shadow: inset 0 5px #916037, inset 0 -6px #21110b, 0 7px 0 #180d09, 0 0 13px #b4873f38;
+}
+.orchestra-bay--high .platform {
+  filter: brightness(1.3) saturate(1.08);
+  box-shadow: inset 0 5px #a16b3c, inset 0 -6px #21110b, 0 7px 0 #180d09, 0 0 20px #ba794c44;
+}
+.platform-front {
+  position: absolute;
+  inset: 44% 0 0;
+  display: grid;
+  place-items: center;
+  border-top: 3px solid #321a10;
+  background: linear-gradient(#4d2918, #2c160e);
+}
+.platform-front::after {
+  content: "";
+  position: absolute;
+  inset: 8% 4%;
+  border: 1px solid #704326;
+}
+.platform-front span {
+  z-index: 1;
+  color: #c4a276;
+  font-size: clamp(5px, .46vw, 9px);
+  letter-spacing: .2em;
+}
+
+.performer { position: absolute; left: 50%; bottom: 70%; transform: translateX(-50%); filter: drop-shadow(5px 7px 0 #0008); transition: filter 250ms; }
+.orchestra-bay--low .performer { filter: brightness(.8) saturate(.88) drop-shadow(5px 7px 0 #0008); }
+.orchestra-bay--medium .performer { filter: brightness(1.06) drop-shadow(0 0 4px #e2ba6a38) drop-shadow(5px 7px 0 #0008); }
+.orchestra-bay--high .performer { filter: brightness(1.22) drop-shadow(0 0 7px #ffd59766) drop-shadow(5px 7px 0 #0008); }
+.standing { width: 80px; height: 120px; }
+.standing i { position: absolute; display: block; }
+.hair { z-index: 3; left: 26px; top: 3px; width: 32px; height: 29px; background: #241a17; box-shadow: -5px 7px #33231d, 6px 5px #171211; }
+.face { z-index: 2; left: 31px; top: 12px; width: 27px; height: 28px; background: #b87d57; border: 4px solid #5e3d2e; box-shadow: inset 6px 0 #d6a074; }
+.torso { left: 25px; top: 39px; width: 38px; height: 49px; background: #d7d0bc; border: 5px solid #403831; box-shadow: inset 9px 0 #948d81; }
+.standing--vocals .torso { background: #923b36; border-color: #3e2524; box-shadow: inset 9px 0 #c05c4f; }
+.standing--bass .torso { background: #456058; border-color: #253a35; }
+.standing--guitar .torso { background: #76513b; border-color: #432f25; }
+.standing--piano .torso { background: #4b566e; border-color: #292f3d; }
+.standing--other .torso { background: #665071; border-color: #392d40; }
+.leg { top: 83px; width: 14px; height: 34px; background: #282527; border: 4px solid #171517; }
+.leg--left { left: 27px; } .leg--right { left: 48px; }
+.standing .arm { top: 44px; width: 13px; height: 42px; background: #b87d57; border: 4px solid #4c342c; transform-origin: top; }
+.standing .arm--left { left: 17px; transform: rotate(14deg); }
+.standing .arm--right { right: 10px; transform: rotate(-28deg); }
+.microphone { z-index: 5; right: 2px; top: 23px; width: 10px; height: 25px; background: #c3beb1; border: 3px solid #393736; transform: rotate(-20deg); }
+.mic-cord { right: -1px; top: 48px; width: 2px; height: 63px; border-right: 2px solid #242222; transform: rotate(4deg); }
+.guitar { z-index: 6; left: 31px; top: 52px; width: 27px; height: 34px; border: 5px solid #59311e; background: #a9592d; transform: rotate(-24deg); clip-path: polygon(25% 0,70% 8%,100% 35%,76% 54%,88% 90%,47% 100%,7% 85%,20% 52%,0 27%); }
+.guitar--bass { background: #4f7478; border-color: #294348; }
+.guitar-neck { z-index: 7; right: 4px; top: 31px; width: 8px; height: 52px; border: 3px solid #543422; background: #b17347; transform: rotate(38deg); }
+.piano-rig, .synth-rig { position: absolute; z-index: 8; left: -5px; top: 58px; width: 94px; height: 61px; }
+.piano-rig i, .synth-rig i { position: absolute; display: block; }
+.piano-case { left: 0; top: 0; width: 94px; height: 26px; border: 5px solid #211f21; background: #50474a; }
+.piano-keys { left: 7px; top: 6px; width: 80px; height: 13px; background: repeating-linear-gradient(90deg, #d7d1c4 0 7px, #29262a 7px 10px); }
+.piano-leg { top: 24px; width: 7px; height: 36px; background: #282329; }
+.piano-leg--left { left: 13px; } .piano-leg--right { right: 13px; }
+.synth-case { left: 5px; top: 0; width: 84px; height: 34px; border: 5px solid #2d2631; background: #5f4e69; }
+.synth-grid { left: 14px; top: 8px; width: 66px; height: 18px; background: repeating-linear-gradient(90deg, #c78a4e 0 5px, transparent 5px 10px), repeating-linear-gradient(0deg, #69a88f 0 4px, #392f42 4px 8px); }
+.synth-stand { left: 42px; top: 32px; width: 8px; height: 30px; background: #302931; transform: skew(-18deg); }
+
+.drummer { width: 130px; height: 108px; }
+.drummer i { position: absolute; display: block; }
+.drummer .head { z-index: 5; left: 50px; top: 2px; width: 29px; height: 30px; background: #b97852; border: 5px solid #4d3025; box-shadow: 0 -6px #211918; }
+.drummer .body { z-index: 3; left: 44px; top: 31px; width: 43px; height: 46px; background: #81603c; border: 5px solid #3f3024; }
+.drummer .arm { z-index: 6; top: 37px; width: 13px; height: 42px; background: #b97852; border: 4px solid #503326; transform-origin: top; }
+.drummer .arm--left { left: 37px; transform: rotate(46deg); }
+.drummer .arm--right { right: 35px; transform: rotate(-52deg); }
+.cymbal { z-index: 2; top: 43px; width: 38px; height: 7px; background: #c99c39; border: 3px solid #694c1d; box-shadow: 16px 8px 0 -6px #4f3c25; }
+.cymbal--left { left: 0; transform: rotate(-7deg); } .cymbal--right { right: 0; transform: rotate(7deg); }
+.tom { z-index: 7; top: 61px; width: 34px; height: 25px; border: 4px solid #4b2a20; background: #8f4432; box-shadow: inset 0 5px #d19a6b; }
+.tom--left { left: 26px; } .tom--right { right: 25px; }
+.kick { z-index: 5; left: 48px; top: 74px; width: 40px; height: 40px; border: 6px solid #4c2c22; border-radius: 50%; background: #75372c; box-shadow: inset 0 0 0 6px #a75a41; }
+
+.main-stage {
+  position: absolute;
+  z-index: 10;
+  left: -5%;
+  right: -5%;
+  bottom: -27%;
+  height: 53%;
+  overflow: hidden;
+  border: 4px solid #25130c;
+  border-radius: 50% 50% 0 0 / 24% 24% 0 0;
+  background:
+    repeating-linear-gradient(88deg, #4e2817 0 5%, #31180f 5.3% 5.8%, #5b301a 6.1% 12%),
+    #3c1e12;
+  box-shadow: inset 0 9px #724226, inset 0 16px #2d170f, 0 -16px 40px #000a;
+}
+.stage-grain { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 10%, #b17a4930, transparent 45%); }
+.conductor {
+  position: absolute;
+  z-index: 14;
+  left: 50%;
+  top: 5%;
+  width: 120px;
+  height: 190px;
+  transform: translateX(-50%);
+  filter: drop-shadow(7px 10px 0 #0008);
+}
+.conductor i { position: absolute; display: block; }
+.conductor-hair { z-index: 6; left: 38px; top: 1px; width: 48px; height: 34px; background: #1d1716; box-shadow: -7px 8px #30221d, 7px 5px #120f0e; }
+.conductor-head { z-index: 5; left: 43px; top: 15px; width: 38px; height: 35px; background: #a86e4c; border: 5px solid #523629; }
+.conductor-neck { left: 52px; top: 44px; width: 22px; height: 16px; background: #9e6548; }
+.conductor-body { z-index: 3; left: 33px; top: 54px; width: 57px; height: 70px; background: #e0d6c4; border: 6px solid #4a3b31; }
+.conductor-vest { z-index: 4; left: 44px; top: 57px; width: 36px; height: 65px; background: #745039; clip-path: polygon(0 0, 48% 35%, 100% 0, 90% 100%, 8% 100%); }
+.conductor-arm { z-index: 2; top: 62px; width: 20px; height: 80px; background: #ddd3c2; border: 5px solid #45372e; transform-origin: top; }
+.conductor-arm--left { left: 27px; transform: rotate(55deg); }
+.conductor-arm--right { right: 24px; transform: rotate(-55deg); }
+.conductor-hand { z-index: 7; top: 100px; width: 27px; height: 27px; background: #b47a54; border: 5px solid #53382b; }
+.conductor-hand--left { left: -6px; transform: rotate(20deg); }
+.conductor-hand--right { right: -3px; transform: rotate(-20deg); }
+.baton { z-index: 1; right: -40px; top: 59px; width: 77px; height: 4px; background: #e9dfc8; transform: rotate(-47deg); transform-origin: left; box-shadow: 0 0 4px #fff7; }
+.conductor-leg { top: 119px; width: 20px; height: 65px; background: #242326; border: 5px solid #111114; }
+.conductor-leg--left { left: 39px; transform: rotate(3deg); }
+.conductor-leg--right { right: 35px; transform: rotate(-3deg); }
+.footlights { position: absolute; top: 44%; left: 11%; right: 11%; display: flex; justify-content: space-between; }
+.footlights i { width: 6px; height: 4px; background: #d6a053; box-shadow: 0 0 11px 4px #d1843955; }
+
+.hand-meter {
+  position: absolute;
+  z-index: 21;
+  top: 39%;
+  display: flex;
+  flex-direction: column;
+  gap: .65vw;
+}
+.hand-meter--left { left: 1.7%; } .hand-meter--right { right: 1.7%; }
+.meter-hand {
+  width: clamp(24px, 2.3vw, 42px);
+  color: #75695f;
+  font: 400 clamp(6px, .55vw, 10px) "Press Start 2P";
+  text-align: center;
+}
+.volume-lamp {
+  display: grid;
+  place-items: center;
+  width: clamp(24px, 2.3vw, 42px);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 3px solid #322c27;
+  background: #0a0908;
+  box-shadow: 4px 4px 0 #000;
+  cursor: pointer;
+}
+.volume-lamp span { width: 45%; aspect-ratio: 1; background: #333; }
+.volume-lamp--green span { background: #214826; }
+.volume-lamp--yellow span { background: #52491f; }
+.volume-lamp--red span { background: #4a201d; }
+.volume-lamp--green.volume-lamp--active { border-color: #5a8a5d; }
+.volume-lamp--green.volume-lamp--active span { background: #64d36a; box-shadow: 0 0 13px #64d36a; }
+.volume-lamp--yellow.volume-lamp--active { border-color: #9d8a43; }
+.volume-lamp--yellow.volume-lamp--active span { background: #ecd452; box-shadow: 0 0 13px #ecd452; }
+.volume-lamp--red.volume-lamp--active { border-color: #8d4a42; }
+.volume-lamp--red.volume-lamp--active span { background: #e15a4e; box-shadow: 0 0 13px #e15a4e; }
+
+.camera-status {
+  position: absolute;
+  z-index: 25;
+  right: 2%;
+  bottom: 2%;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .7rem;
+  border: 1px solid #3f3933;
+  color: #756f69;
+  background: #080706cc;
+  font-size: clamp(5px, .45vw, 8px);
+  cursor: pointer;
+}
+.camera-status i { width: 6px; height: 6px; background: #5fbd61; box-shadow: 0 0 7px #5fbd61; }
+
+.welcome {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 43%, #2a1a0f 0, #090706 40%, #020202 76%);
+}
+.welcome::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #0002 3px 4px);
+  pointer-events: none;
+}
+.welcome-spotlight {
+  position: absolute;
+  top: -10%;
+  left: 50%;
+  width: min(55vw, 700px);
+  height: 78vh;
+  transform: translateX(-50%);
+  background: linear-gradient(105deg, transparent 25%, #e4bd7920 50%, transparent 75%);
+  clip-path: polygon(42% 0,58% 0,100% 100%,0 100%);
+}
+.welcome-mark { z-index: 4; margin-top: -16vh; text-align: center; }
+.welcome-mark > span { color: #8e7c6a; font-size: clamp(6px, .55vw, 10px); letter-spacing: .45em; }
+.welcome-mark h1 {
+  margin: 1.8rem 0 1rem;
+  color: #e6d7c0;
+  font: 400 clamp(38px, 5.7vw, 96px) "Press Start 2P";
+  letter-spacing: .1em;
+  text-shadow: 0 7px #503621, 0 11px #140d09;
+}
+.baton-rule { position: relative; width: 65%; height: 1px; margin: 1.4rem auto; background: linear-gradient(90deg, transparent, #795b3d, transparent); }
+.baton-rule i { position: absolute; left: 50%; top: -2px; width: 30%; height: 3px; background: #d9c6a9; transform: translateX(-50%) rotate(-4deg); }
+.welcome-mark p { margin: 1.8rem 0; color: #9f8c75; font-size: clamp(7px, .7vw, 13px); letter-spacing: .24em; }
+.welcome-mark button {
+  padding: 1rem 1.5rem;
+  border: 3px solid #8a6743;
+  color: #e7d7c1;
+  background: #17100c;
+  box-shadow: inset 0 0 0 3px #2f2117, 6px 6px #000;
+  font: 400 clamp(7px, .65vw, 12px) "Press Start 2P";
+  cursor: pointer;
+}
+.welcome-mark button:hover { color: #fff; background: #2d1c12; box-shadow: inset 0 0 0 3px #553a26, 6px 6px #000, 0 0 25px #c58a4b22; }
+.welcome-mark small { display: block; margin-top: 1.3rem; color: #5d554e; font-size: 7px; letter-spacing: .14em; }
+.welcome-stage {
+  position: absolute;
+  z-index: 3;
+  left: -5%;
+  right: -5%;
+  bottom: -14%;
+  height: 32%;
+  border: 4px solid #2d180f;
+  border-radius: 50% 50% 0 0 / 30% 30% 0 0;
+  background: repeating-linear-gradient(88deg, #4b2717 0 5%, #2e170e 5.3% 5.8%, #5c311b 6% 12%);
+  box-shadow: inset 0 9px #734327, 0 -15px 40px #000;
+}
+.welcome-stage .conductor { top: -22%; transform: translateX(-50%) scale(.86); transform-origin: bottom; }
+
+@media (max-width: 800px) {
+  .instruction-card { width: 135px; }
+  .pixel-icon { transform: scale(.8); margin: -3px; }
+  .standing { transform: translateX(-50%) scale(.75); transform-origin: bottom; }
+  .drummer { transform: translateX(-50%) scale(.72); transform-origin: bottom; }
+  .conductor { transform: translateX(-50%) scale(.72); transform-origin: top; }
+  .song-name { min-width: 28%; }
+}

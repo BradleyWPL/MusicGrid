@@ -1,0 +1,10 @@
+{
+  "description": "Conduct a pixel-art orchestra with your hands, guiding performers through changing instrument and volume cues in an immersive musical game.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
