@@ -11,8 +11,16 @@ const trackFiles: Record<TrackId, string> = {
   other: "/assets/audio/other.mp3",
 }
 
-/** Fixed linear gain for the two non-interactive background stems. */
+/** Fixed linear gain for the non-interactive Piano background stem. */
 const backgroundGain = 0.25
+const gainFadeOutSeconds = 3
+const gainFadeInSeconds = 0.16
+const gainByLevel: Record<VolumeLevel, number> = {
+  RED: 0.12,
+  ORANGE: 0.3,
+  YELLOW: 0.58,
+  GREEN: 0.88,
+}
 
 /**
  * Owns six synchronized, streaming audio elements and their Web Audio gains.
@@ -26,6 +34,7 @@ export class AudioEngine {
   private context: AudioContext | null = null
   private elements = new Map<TrackId, HTMLAudioElement>()
   private gains = new Map<TrackId, GainNode>()
+  private targetLevels = new Map<TrackId, VolumeLevel>()
   private offset = 0
   private playing = false
   private loading: Promise<void> | null = null
@@ -48,7 +57,9 @@ export class AudioEngine {
         element.load()
 
         const gain = this.context!.createGain()
-        gain.gain.value = id === "piano" ? backgroundGain : 0.18
+        const baseLevel: VolumeLevel = id === "vocals" ? "ORANGE" : "RED"
+        gain.gain.value = id === "piano" ? backgroundGain : gainByLevel[baseLevel]
+        if (id !== "piano") this.targetLevels.set(id, baseLevel)
         const source = this.context!.createMediaElementSource(element)
         source.connect(gain)
         gain.connect(this.context!.destination)
@@ -108,18 +119,25 @@ export class AudioEngine {
   /**
    * Input: an interactive orchestra section and one of its four cue levels.
    * Output: smoothed gain updates; Strings addresses both string stems.
-   * Processing: maps color levels to linear gain and ramps without clicks.
+   * Processing: ramps increases quickly and decreases over three seconds; vocals
+   * use ORANGE as their floor while the other interactive stems use RED.
    */
   setInteractiveGain(
     track: InteractiveSection,
     level: VolumeLevel,
   ) {
-    const value = { RED: 0.12, ORANGE: 0.3, YELLOW: 0.58, GREEN: 0.88 }[level]
+    const value = gainByLevel[level]
     const tracks: TrackId[] = track === "strings" ? ["guitar", "other"] : [track]
     if (!this.context) return
+    const now = this.context.currentTime
     tracks.forEach((id) => {
       const gain = this.gains.get(id)
-      if (gain) gain.gain.setTargetAtTime(value, this.context!.currentTime, 0.08)
+      if (!gain || this.targetLevels.get(id) === level) return
+      const previousValue = gainByLevel[this.targetLevels.get(id) ?? "RED"]
+      const fadeSeconds = value < previousValue ? gainFadeOutSeconds : gainFadeInSeconds
+      gain.gain.cancelAndHoldAtTime(now)
+      gain.gain.linearRampToValueAtTime(value, now + fadeSeconds)
+      this.targetLevels.set(id, level)
     })
   }
 

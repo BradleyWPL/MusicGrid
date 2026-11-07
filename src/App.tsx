@@ -478,15 +478,18 @@ export default function App() {
     [currentTime],
   )
 
-  // Active cues enable hand control; every unprompted or unattended section stays red.
+  // Cues enable hand control; vocals rest at orange while other sections rest at red.
   useEffect(() => {
     if (audioStatus !== "ready") return
     sections.forEach((section) => {
       const cue = activeCues.find((item) => item.section === section)
       const handsOnSection = [left, right].filter((hand) => hand.section === section)
-      const volume = cue && handsOnSection.length
+      const requestedVolume = cue && handsOnSection.length
         ? handsOnSection.reduce((strongest, hand) => volumeStrength[hand.volume] > volumeStrength[strongest] ? hand.volume : strongest, "RED" as Volume)
-        : "RED"
+        : section === "VOCALS" ? "ORANGE" : "RED"
+      const volume = section === "VOCALS" && volumeStrength[requestedVolume] < volumeStrength.ORANGE
+        ? "ORANGE"
+        : requestedVolume
       audio.setInteractiveGain(trackForSection[section], volume)
     })
   }, [audio, audioStatus, activeCues, left, right])
@@ -497,12 +500,15 @@ export default function App() {
       if (!hand.section) return
       if (!activeCues.some((cue) => cue.section === hand.section)) return
       const current = intensity.get(hand.section)
-      if (!current || volumeStrength[hand.volume] > volumeStrength[current]) {
-        intensity.set(hand.section, hand.volume)
+      const effectiveVolume = hand.section === "VOCALS" && hand.volume === "RED" ? "ORANGE" : hand.volume
+      if (!current || volumeStrength[effectiveVolume] > volumeStrength[current]) {
+        intensity.set(hand.section, effectiveVolume)
       }
     })
+    sections.forEach((section) => {
+      if (!intensity.has(section)) intensity.set(section, section === "VOCALS" ? "ORANGE" : "RED")
+    })
     return intensity
-    sections.forEach((section) => { if (!intensity.has(section)) intensity.set(section, "RED") })
   }, [left, right, activeCues])
 
   /** Input: pointer event within the game. Output: selected hand state and stem gain. */
