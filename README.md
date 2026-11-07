@@ -21,7 +21,7 @@ Camera access requires `localhost` during development or HTTPS after deployment.
 
 ## Audio behavior
 
-All six supplied stems are scheduled on a shared Web Audio clock. Vocals, Drums, Bass, and Strings respond to hand levels while their cue is active. Strings applies the same gain to the Guitar and Other stems. Vocals rest at orange so the lead remains audible; other interactive sections rest at red. Lowering an interactive level fades over three seconds, while raising it fades in over 0.16 seconds. Piano remains at the fixed background gain configured in `src/services/audio/AudioEngine.ts`. The editable cue data lives in `src/data/instructions.ts` and is based on the supplied stem arrangement and requested song moments.
+All six supplied stems are scheduled on a shared Web Audio clock. Vocals, Drums, Bass, and Strings respond to hand levels while their cue is active. Cue frequency prioritizes Vocals and Strings equally, followed by Drums and then Bass. Strings applies the same gain to the Guitar and Other stems. Vocals rest at orange so the lead remains audible; other interactive sections rest at red. Lowering an interactive level fades over three seconds, while raising it fades in over 0.16 seconds. Piano remains at the fixed background gain configured in `src/services/audio/AudioEngine.ts`. The editable cue data lives in `src/data/instructions.ts` and is based on the supplied stem arrangement and requested song moments.
 
 ## Hand tracking and attribution
 
