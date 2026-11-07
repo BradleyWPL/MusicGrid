@@ -155,6 +155,7 @@ header {
 .volume-copy--green { color: #62c866; }
 .volume-copy--yellow { color: #eccd54; }
 .volume-copy--red { color: #d95b4e; }
+.hand-coordinates { display: block; margin-top: .25vw; color: #897d70; font-size: clamp(5px, .42vw, 8px); letter-spacing: .06em; }
 
 .pixel-icon { position: relative; display: block; width: 28px; height: 28px; flex: 0 0 28px; }
 .pixel-icon i { position: absolute; display: block; }
@@ -429,22 +430,51 @@ header {
 .volume-lamp--red.volume-lamp--active { border-color: #8d4a42; }
 .volume-lamp--red.volume-lamp--active span { background: #e15a4e; box-shadow: 0 0 13px #e15a4e; }
 
-.camera-status {
+.camera-panel {
   position: absolute;
-  z-index: 25;
-  right: 2%;
+  z-index: 24;
+  left: 2%;
   bottom: 2%;
+  width: clamp(118px, 12vw, 220px);
+  padding: .4rem;
+  border: 1px solid #5d4934;
+  background: #080706e8;
+  box-shadow: 4px 4px #0008;
+}
+.camera-feed {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  transform: scaleX(-1);
+  background: #15110e;
+  image-rendering: auto;
+}
+.camera-status {
   display: flex;
   align-items: center;
-  gap: .5rem;
-  padding: .5rem .7rem;
-  border: 1px solid #3f3933;
+  gap: .4rem;
+  min-height: 18px;
+  padding: .25rem .2rem;
   color: #756f69;
-  background: #080706cc;
   font-size: clamp(5px, .45vw, 8px);
+  line-height: 1.4;
+}
+.camera-status i { flex: 0 0 6px; width: 6px; height: 6px; background: #777; }
+.camera-status--requesting-camera i, .camera-status--loading-model i, .camera-status--searching i { background: #d0a749; box-shadow: 0 0 7px #d0a749; }
+.camera-status--two-hands i { background: #5fbd61; box-shadow: 0 0 7px #5fbd61; }
+.camera-status--one-hand i { background: #e5ca54; box-shadow: 0 0 7px #e5ca54; }
+.camera-status--permission-denied i, .camera-status--camera-unavailable i, .camera-status--error i { background: #d95b4e; box-shadow: 0 0 7px #d95b4e; }
+.camera-detail { display: block; overflow-wrap: anywhere; margin: .15rem 0; color: #c8876f; font: 6px/1.4 monospace; }
+.camera-mode-button {
+  margin: .15rem .2rem .1rem 0;
+  padding: .25rem .3rem;
+  border: 1px solid #58432f;
+  color: #c7b398;
+  background: #17100c;
+  font: 400 clamp(4px, .35vw, 7px) "Press Start 2P";
   cursor: pointer;
 }
-.camera-status i { width: 6px; height: 6px; background: #5fbd61; box-shadow: 0 0 7px #5fbd61; }
 
 .welcome {
   position: relative;

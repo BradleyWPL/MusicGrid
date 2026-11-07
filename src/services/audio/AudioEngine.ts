@@ -1,4 +1,3 @@
-/** Stable identifiers for all interactive and background stems. */
 export type TrackId = "vocals" | "drums" | "bass" | "guitar" | "piano" | "other"
 
 const trackFiles: Record<TrackId, string> = {
@@ -14,149 +13,169 @@ const trackFiles: Record<TrackId, string> = {
 const backgroundGain = 0.25
 
 /**
- * Owns loading, synchronized playback, pause/resume, and per-stem gain.
- * Inputs: six local MP3 URLs and four hand-selected LOW/MEDIUM/HIGH levels.
- * Outputs: one playback timeline and GainNode-controlled audio to the speakers.
- * Processing: decodes each stem once, then schedules all BufferSourceNodes on
- * the same AudioContext clock. Piano and Other always use `backgroundGain`.
+ * Owns six synchronized, streaming audio elements and their Web Audio gains.
+ * Inputs: six local MP3 files, playback commands, and four hand-selected levels.
+ * Outputs: synchronized audio and song time, routed through per-stem GainNodes.
+ * Processing: streams compressed files instead of decoding their full four-minute
+ * durations into large PCM buffers. All play calls are issued in one task against
+ * a shared AudioContext; Piano and Other always keep the configured fixed gain.
  */
 export class AudioEngine {
   private context: AudioContext | null = null
-  private buffers = new Map<TrackId, AudioBuffer>()
+  private elements = new Map<TrackId, HTMLAudioElement>()
   private gains = new Map<TrackId, GainNode>()
-  private sources: AudioBufferSourceNode[] = []
-  private startedAt = 0
   private offset = 0
   private playing = false
   private loading: Promise<void> | null = null
 
   /**
-   * Input: none. Output: resolves after all six AudioBuffers are decoded.
-   * Processing: fetches stems in parallel and builds one gain node per track.
+   * Input: none. Output: resolves after all six tracks have audio metadata.
+   * Processing: creates streaming media elements and connects them to the shared context.
    */
   async load() {
-    if (this.buffers.size === 6) return
+    if (this.elements.size === 6) return
     if (this.loading) return this.loading
 
     this.context ??= new AudioContext()
-    this.loading = (async () => {
-      const entries = await Promise.all(
-        Object.entries(trackFiles).map(async ([id, url]) => {
-          const response = await fetch(url)
-          if (!response.ok) throw new Error(`Could not load ${id} audio (${response.status})`)
-          const data = await response.arrayBuffer()
-          const buffer = await this.context!.decodeAudioData(data)
-          return [id as TrackId, buffer] as const
-        }),
-      )
-      entries.forEach(([id, buffer]) => this.buffers.set(id, buffer))
-      this.createGainNodes()
-    })().catch((error) => {
+    this.loading = Promise.all(
+      Object.entries(trackFiles).map(async ([key, url]) => {
+        const id = key as TrackId
+        const element = new Audio()
+        element.preload = "auto"
+        element.src = url
+        element.load()
+
+        const gain = this.context!.createGain()
+        gain.gain.value = id === "piano" || id === "other" ? backgroundGain : 0.5
+        const source = this.context!.createMediaElementSource(element)
+        source.connect(gain)
+        gain.connect(this.context!.destination)
+        element.addEventListener("ended", () => {
+          if (id === "vocals") {
+            this.playing = false
+            this.offset = this.duration
+            this.pauseElements()
+          }
+        })
+
+        this.elements.set(id, element)
+        this.gains.set(id, gain)
+        await this.waitForMetadata(element, id)
+      }),
+    ).then(() => undefined).catch((error) => {
       this.loading = null
       throw error
     })
+
     return this.loading
   }
 
-  /** Input: none. Output: begins every stem together from song time zero. */
+  /** Input: none. Output: starts all six stems at song time zero. */
   async start() {
     await this.load()
     await this.context!.resume()
-    this.stopSources()
-    this.offset = 0
-    this.startAtOffset(0)
+    await this.playAt(0)
   }
 
-  /** Input: none. Output: resumes all stems from the paused offset. */
+  /** Input: none. Output: resumes all stems from the shared paused position. */
   async resume() {
     await this.load()
     await this.context!.resume()
     if (this.playing) return
-    this.startAtOffset(this.offset)
+    await this.playAt(this.offset)
   }
 
-  /** Input: none. Processing: stores the shared clock offset and stops active sources. */
+  /** Input: none. Processing: pauses every stream and preserves the master time. */
   pause() {
-    if (!this.playing || !this.context) return
+    if (!this.playing) return
     this.offset = this.getCurrentTime()
-    this.stopSources()
+    this.pauseElements()
+    this.playing = false
   }
 
-  /** Input: none. Output: stops playback and resets the next start to zero. */
+  /** Input: none. Output: pauses every stream and resets the playhead to zero. */
   stop() {
+    this.pauseElements()
     this.offset = 0
-    this.stopSources()
+    this.playing = false
+    this.elements.forEach((element) => {
+      if (element.readyState >= HTMLMediaElement.HAVE_METADATA) element.currentTime = 0
+    })
   }
 
   /**
-   * Input: an interactive track and one of three hand volume levels.
-   * Output: a smoothed GainNode update; background stems are excluded by type.
-   * Processing: maps levels to linear gain and ramps without abrupt clicks.
+   * Input: an interactive track and LOW/MEDIUM/HIGH.
+   * Output: a smoothed gain update; background stems are excluded by type.
+   * Processing: maps volume names to linear gain values and ramps without clicks.
    */
-  setInteractiveGain(track: Exclude<TrackId, "piano" | "other">, level: "LOW" | "MEDIUM" | "HIGH") {
+  setInteractiveGain(
+    track: Exclude<TrackId, "piano" | "other">,
+    level: "LOW" | "MEDIUM" | "HIGH",
+  ) {
     const value = { LOW: 0.18, MEDIUM: 0.5, HIGH: 0.88 }[level]
     const gain = this.gains.get(track)
     if (!gain || !this.context) return
     gain.gain.setTargetAtTime(value, this.context.currentTime, 0.08)
   }
 
-  /** Input: none. Output: current shared song position in seconds. */
+  /** Input: none. Output: vocals currentTime, used as the shared song clock. */
   getCurrentTime() {
-    if (!this.context || !this.playing) return this.offset
-    return Math.min(this.duration, this.offset + this.context.currentTime - this.startedAt)
+    const master = this.elements.get("vocals")
+    if (!master || !this.playing) return this.offset
+    return Math.min(this.duration, master.currentTime)
   }
 
-  /** Output: decoded vocals duration in seconds, or zero before loading. */
+  /** Output: vocals duration in seconds, or zero before metadata is loaded. */
   get duration() {
-    return this.buffers.get("vocals")?.duration ?? 0
+    const duration = this.elements.get("vocals")?.duration ?? 0
+    return Number.isFinite(duration) ? duration : 0
   }
 
-  /** Output: whether the shared timeline is currently advancing. */
+  /** Output: whether all six audio elements are currently in the play state. */
   get isPlaying() {
     return this.playing
   }
 
-  /** Input: decoded buffers. Output: one connected GainNode for each stem. */
-  private createGainNodes() {
-    if (!this.context) return
-    ;(Object.keys(trackFiles) as TrackId[]).forEach((id) => {
-      if (this.gains.has(id)) return
-      const gain = this.context!.createGain()
-      gain.gain.value = id === "piano" || id === "other" ? backgroundGain : 0.5
-      gain.connect(this.context!.destination)
-      this.gains.set(id, gain)
+  /** Assigns one shared offset and starts each media element without separate timers. */
+  private async playAt(time: number) {
+    const playPromises = Array.from(this.elements.values()).map((element) => {
+      element.currentTime = Math.min(time, Math.max(0, element.duration - 0.01))
+      return element.play()
     })
-  }
-
-  /** Input: playback offset in seconds. Processing: schedules every source at one future AudioContext time. */
-  private startAtOffset(offset: number) {
-    if (!this.context) return
-    const startTime = this.context.currentTime + 0.12
-    this.sources = (Object.keys(trackFiles) as TrackId[]).map((id) => {
-      const source = this.context!.createBufferSource()
-      source.buffer = this.buffers.get(id)!
-      source.connect(this.gains.get(id)!)
-      source.start(startTime, Math.min(offset, Math.max(0, source.buffer.duration - 0.01)))
-      return source
-    })
-    this.startedAt = startTime
-    this.offset = offset
+    try {
+      await Promise.all(playPromises)
+    } catch (error) {
+      this.pauseElements()
+      throw error
+    }
+    this.offset = time
     this.playing = true
-    this.sources[0]?.addEventListener("ended", () => {
-      if (this.getCurrentTime() >= this.duration - 0.05) {
-        this.playing = false
-        this.offset = this.duration
-      }
-    })
   }
 
-  /** Input: none. Processing: safely stops and disconnects the active buffer sources. */
-  private stopSources() {
-    this.sources.forEach((source) => {
-      try { source.stop() } catch { /* already stopped */ }
-      source.disconnect()
+  /** Pauses every media element in the same synchronous turn. */
+  private pauseElements() {
+    this.elements.forEach((element) => element.pause())
+  }
+
+  /** Waits for duration metadata and turns a media load failure into a useful error. */
+  private waitForMetadata(element: HTMLAudioElement, track: TrackId) {
+    if (element.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        element.removeEventListener("loadedmetadata", onMetadata)
+        element.removeEventListener("error", onError)
+      }
+      const onMetadata = () => {
+        cleanup()
+        resolve()
+      }
+      const onError = () => {
+        cleanup()
+        reject(new Error(`Could not load ${track} audio`))
+      }
+      element.addEventListener("loadedmetadata", onMetadata, { once: true })
+      element.addEventListener("error", onError, { once: true })
+      if (element.error) onError()
     })
-    this.sources = []
-    this.playing = false
   }
 }

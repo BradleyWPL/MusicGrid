@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { AudioEngine, type TrackId } from "./services/audio/AudioEngine"
+import {
+  HandTrackingService,
+  type HandFrame,
+  type HandTrackingStatus,
+  type TrackedHand,
+} from "./services/handTracking/HandTrackingService"
 
 type Section = "VOCALS" | "DRUMS" | "BASS" | "GUITAR"
 type Volume = "HIGH" | "MEDIUM" | "LOW"
@@ -8,6 +14,7 @@ type HandState = {
   volume: Volume
   x: number
   y: number
+  confidence: number | null
 }
 
 const sections: Section[] = [
@@ -24,6 +31,49 @@ const volumeColor: Record<Volume, string> = {
   HIGH: "green",
   MEDIUM: "yellow",
   LOW: "red",
+}
+
+const cameraStatusText: Record<HandTrackingStatus, string> = {
+  idle: "CAMERA OFF",
+  "requesting-camera": "REQUESTING CAMERA ACCESS…",
+  "loading-model": "LOADING HAND TRACKER…",
+  searching: "SHOW BOTH HANDS TO CAMERA",
+  "no-hands": "NO HANDS DETECTED",
+  "one-hand": "1 HAND DETECTED · FIND YOUR OTHER HAND",
+  "two-hands": "2 HANDS DETECTED",
+  "permission-denied": "CAMERA ACCESS DENIED · ALLOW CAMERA AND RETRY",
+  "camera-unavailable": "CAMERA UNAVAILABLE · CONNECT A CAMERA AND RETRY",
+  error: "HAND TRACKING ERROR",
+}
+
+/** Uses the previously selected zone near boundaries to avoid flicker. */
+function sectionForX(x: number, previous: Section | null): Section {
+  const previousIndex = previous ? sections.indexOf(previous) : -1
+  if (previousIndex >= 0) {
+    const lower = previousIndex / sections.length - 0.035
+    const upper = (previousIndex + 1) / sections.length + 0.035
+    if (x >= lower && x <= upper) return previous!
+  }
+  return sections[Math.min(sections.length - 1, Math.floor(x * sections.length))]
+}
+
+/** Converts tracked Y into red/yellow/green volume with vertical hysteresis. */
+function volumeForY(y: number, previous: Volume): Volume {
+  if (previous === "HIGH" && y < 0.37) return "HIGH"
+  if (previous === "MEDIUM" && y >= 0.31 && y < 0.70) return "MEDIUM"
+  if (previous === "LOW" && y >= 0.64) return "LOW"
+  return y < 0.34 ? "HIGH" : y < 0.67 ? "MEDIUM" : "LOW"
+}
+
+/** Maps one MediaPipe normalized point to its instrument and gain state. */
+function toHandState(hand: TrackedHand, previous: HandState): HandState {
+  return {
+    section: sectionForX(hand.x, previous.section),
+    volume: volumeForY(hand.y, previous.volume),
+    x: hand.x,
+    y: hand.y,
+    confidence: hand.confidence,
+  }
 }
 
 /**
@@ -92,7 +142,7 @@ function SongProgressBar({ currentTime, duration }: { currentTime: number; durat
 }
 
 /**
- * Input: hand side and its current simulated hand state.
+ * Input: hand side and its current camera or simulation state.
  * Output: one of the two independent hand status cards.
  * Processing: shows the selected section and volume, or a simulation prompt.
  */
@@ -123,8 +173,9 @@ function HandInstructionCard({
           <span
             className={`volume-copy volume-copy--${volumeColor[state.volume]}`}
           >
-            {state.section ? state.volume : "MOVE TO SIMULATE"}
+            {state.section ? `${state.volume}${state.confidence === null ? "" : ` · ${Math.round(state.confidence * 100)}%`}` : "WAITING FOR HAND"}
           </span>
+          {state.section && <small className="hand-coordinates">X {state.x.toFixed(2)} · Y {state.y.toFixed(2)}</small>}
         </div>
       </div>
     </article>
@@ -326,6 +377,12 @@ function WelcomeScreen({ onStart }: { onStart: () => void }) {
 export default function App() {
   const [started, setStarted] = useState(false)
   const [audio] = useState(() => new AudioEngine())
+  const [handTracker] = useState(() => new HandTrackingService())
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [inputMode, setInputMode] = useState<"camera" | "simulation">("camera")
+  const [cameraStatus, setCameraStatus] = useState<HandTrackingStatus>("idle")
+  const [cameraDetail, setCameraDetail] = useState("")
+  const [cameraRetry, setCameraRetry] = useState(0)
   const [audioStatus, setAudioStatus] = useState<"loading" | "ready" | "error">("loading")
   const [audioError, setAudioError] = useState("")
   const [playing, setPlaying] = useState(false)
@@ -336,12 +393,14 @@ export default function App() {
     volume: "HIGH",
     x: 0.2,
     y: 0.2,
+    confidence: null,
   })
   const [right, setRight] = useState<HandState>({
     section: null,
     volume: "MEDIUM",
     x: 0.8,
     y: 0.5,
+    confidence: null,
   })
   const [shiftHeld, setShiftHeld] = useState(false)
 
@@ -360,6 +419,39 @@ export default function App() {
     })
     return () => { live = false }
   }, [audio, started])
+
+  // Ask for camera access after the player presses Begin Performance.
+  useEffect(() => {
+    if (!started || inputMode !== "camera") return
+    const video = videoRef.current
+    if (!video) return
+    let live = true
+    setCameraDetail("")
+    void handTracker.start(
+      video,
+      (hands: HandFrame) => {
+        if (!live) return
+        setLeft((previous) => hands.left
+          ? toHandState(hands.left, previous)
+          : { ...previous, section: null, confidence: null })
+        setRight((previous) => hands.right
+          ? toHandState(hands.right, previous)
+          : { ...previous, section: null, confidence: null })
+      },
+      (status, detail) => {
+        if (!live) return
+        setCameraStatus(status)
+        if (detail) setCameraDetail(detail)
+      },
+    ).catch((error: unknown) => {
+      if (!live) return
+      setCameraDetail(error instanceof Error ? error.message : "Could not start the camera")
+    })
+    return () => {
+      live = false
+      handTracker.stop()
+    }
+  }, [handTracker, started, inputMode, cameraRetry])
 
   // Poll the AudioContext clock for the visible song progress display.
   useEffect(() => {
@@ -385,6 +477,22 @@ export default function App() {
       window.removeEventListener("keyup", up)
     }
   }, [])
+
+  // Apply live hand levels to the four interactive stems; Piano and Other are excluded.
+  useEffect(() => {
+    if (audioStatus !== "ready") return
+    const activeBySection = new Map<Section, Volume>()
+    ;[left, right].forEach((hand) => {
+      if (!hand.section) return
+      const current = activeBySection.get(hand.section)
+      if (!current || volumeStrength[hand.volume] > volumeStrength[current]) {
+        activeBySection.set(hand.section, hand.volume)
+      }
+    })
+    activeBySection.forEach((volume, section) => {
+      audio.setInteractiveGain(trackForSection[section], volume)
+    })
+  }, [audio, audioStatus, left.section, left.volume, right.section, right.volume])
 
   const sectionIntensity = useMemo(() => {
     const intensity = new Map<Section, Volume>()
@@ -416,17 +524,7 @@ export default function App() {
       volume,
       x,
       y,
-    }
-    const nextLeft = shiftHeld ? left : next
-    const nextRight = shiftHeld ? next : right
-    if (section) {
-      const activeVolumes = [nextLeft, nextRight]
-        .filter((hand) => hand.section === section)
-        .map((hand) => hand.volume)
-      const combined = activeVolumes.reduce((strongest, level) =>
-        volumeStrength[level] > volumeStrength[strongest] ? level : strongest,
-      )
-      audio.setInteractiveGain(trackForSection[section], combined)
+      confidence: null,
     }
     if (shiftHeld) setRight(next)
     else setLeft(next)
@@ -471,7 +569,7 @@ export default function App() {
 
   return (
     <main className="game-shell">
-      <div className="game" onPointerMove={handleStageMove}>
+      <div className="game" onPointerMove={inputMode === "simulation" ? handleStageMove : undefined}>
         <header>
           <div className="section-nav">
             {sections.map((section) => (
@@ -495,7 +593,7 @@ export default function App() {
         </button>
         <div className="control-hint">
           {shiftHeld ? "RIGHT HAND ACTIVE" : "LEFT HAND ACTIVE"}{" "}
-          <span>SIMULATION · HOLD SHIFT TO SWITCH HANDS</span>
+          <span>{inputMode === "camera" ? "LIVE CAMERA · TRACK BOTH HANDS" : "MOUSE SIMULATION · HOLD SHIFT TO SWITCH"}</span>
         </div>
 
         <div className="transport-controls" onPointerDown={(event) => event.stopPropagation()}>
@@ -503,11 +601,11 @@ export default function App() {
             {audioStatus === "loading" ? "LOADING STEMS…" : playing ? "PAUSE" : "PLAY SONG"}
           </button>
           <button type="button" onClick={() => { audio.stop(); setCurrentTime(0); setPlaying(false) }} disabled={audioStatus !== "ready"}>STOP</button>
-          <span>{audioStatus === "error" ? `AUDIO ERROR: ${audioError}` : "SIMULATED HANDS · MOVE MOUSE · SHIFT SWITCHES HAND"}</span>
+          <span>{audioStatus === "error" ? `AUDIO ERROR: ${audioError}` : inputMode === "camera" ? "LIVE CAMERA · MUSIC FOLLOWS BOTH HANDS" : "MOUSE SIMULATION · MOVE MOUSE · SHIFT SWITCHES HAND"}</span>
         </div>
 
-        {left.section && <div className="hand-marker hand-marker--left" style={{ left: `${left.x * 100}%`, top: `${left.y * 100}%` }} aria-label="Simulated left hand" />}
-        {right.section && <div className="hand-marker hand-marker--right" style={{ left: `${right.x * 100}%`, top: `${right.y * 100}%` }} aria-label="Simulated right hand" />}
+        {left.section && <div className={`hand-marker hand-marker--left hand-marker--${inputMode}`} style={{ left: `${left.x * 100}%`, top: `${left.y * 100}%` }} aria-label="Left hand position" />}
+        {right.section && <div className={`hand-marker hand-marker--right hand-marker--${inputMode}`} style={{ left: `${right.x * 100}%`, top: `${right.y * 100}%` }} aria-label="Right hand position" />}
 
         <HandPositionIndicator
           side="LEFT"
@@ -540,9 +638,32 @@ export default function App() {
           </div>
         </div>
 
-        <div className="camera-status camera-status--simulated">
-          <i />{" "}
-          SIMULATION MODE
+        <div className="camera-panel">
+          {inputMode === "camera" && <video ref={videoRef} className="camera-feed" muted autoPlay playsInline aria-label="Local camera preview used for hand tracking" />}
+          <div className={`camera-status camera-status--${cameraStatus}`}>
+            <i />
+            <span>{inputMode === "simulation" ? "MOUSE SIMULATION ACTIVE" : cameraStatusText[cameraStatus]}</span>
+          </div>
+          {cameraDetail && inputMode === "camera" && <small className="camera-detail">{cameraDetail}</small>}
+          <button
+            type="button"
+            className="camera-mode-button"
+            onClick={() => {
+              setCameraDetail("")
+              if (inputMode === "camera") {
+                setCameraStatus("idle")
+                setInputMode("simulation")
+              } else {
+                setInputMode("camera")
+                setCameraRetry((count) => count + 1)
+              }
+            }}
+          >
+            {inputMode === "camera" ? "USE MOUSE SIMULATION" : "ENABLE CAMERA"}
+          </button>
+          {inputMode === "camera" && (cameraStatus === "permission-denied" || cameraStatus === "camera-unavailable" || cameraStatus === "error") && (
+            <button type="button" className="camera-mode-button" onClick={() => setCameraRetry((count) => count + 1)}>RETRY CAMERA</button>
+          )}
         </div>
       </div>
     </main>
