@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AudioEngine, type TrackId } from "./services/audio/AudioEngine"
+import { AudioEngine, type InteractiveSection } from "./services/audio/AudioEngine"
+import { INSTRUCTION_TIMELINE, type InstructionCue, type Section, type Volume } from "./data/instructions"
 import {
   HandTrackingService,
   type HandFrame,
@@ -7,8 +8,6 @@ import {
   type TrackedHand,
 } from "./services/handTracking/HandTrackingService"
 
-type Section = "VOCALS" | "DRUMS" | "BASS" | "GUITAR"
-type Volume = "HIGH" | "MEDIUM" | "LOW"
 type HandState = {
   section: Section | null
   volume: Volume
@@ -17,20 +16,13 @@ type HandState = {
   confidence: number | null
 }
 
-const sections: Section[] = [
-  "VOCALS",
-  "DRUMS",
-  "BASS",
-  "GUITAR",
-]
-const trackForSection: Record<Section, Exclude<TrackId, "piano" | "other">> = {
-  VOCALS: "vocals", DRUMS: "drums", BASS: "bass", GUITAR: "guitar",
+const sections: Section[] = ["VOCALS", "DRUMS", "BASS", "STRINGS"]
+const trackForSection: Record<Section, InteractiveSection> = {
+  VOCALS: "vocals", DRUMS: "drums", BASS: "bass", STRINGS: "strings",
 }
-const volumeStrength: Record<Volume, number> = { LOW: 1, MEDIUM: 2, HIGH: 3 }
+const volumeStrength: Record<Volume, number> = { RED: 0, ORANGE: 1, YELLOW: 2, GREEN: 3 }
 const volumeColor: Record<Volume, string> = {
-  HIGH: "green",
-  MEDIUM: "yellow",
-  LOW: "red",
+  GREEN: "green", YELLOW: "yellow", ORANGE: "orange", RED: "red",
 }
 
 const cameraStatusText: Record<HandTrackingStatus, string> = {
@@ -57,12 +49,15 @@ function sectionForX(x: number, previous: Section | null): Section {
   return sections[Math.min(sections.length - 1, Math.floor(x * sections.length))]
 }
 
-/** Converts tracked Y into red/yellow/green volume with vertical hysteresis. */
+/** Converts tracked Y into four color levels with vertical hysteresis. */
 function volumeForY(y: number, previous: Volume): Volume {
-  if (previous === "HIGH" && y < 0.37) return "HIGH"
-  if (previous === "MEDIUM" && y >= 0.31 && y < 0.70) return "MEDIUM"
-  if (previous === "LOW" && y >= 0.64) return "LOW"
-  return y < 0.34 ? "HIGH" : y < 0.67 ? "MEDIUM" : "LOW"
+  const levels: Volume[] = ["GREEN", "YELLOW", "ORANGE", "RED"]
+  const thresholds = [0.25, 0.5, 0.75]
+  const oldIndex = levels.indexOf(previous)
+  if (oldIndex > 0 && y >= thresholds[oldIndex - 1] - 0.035 && y < thresholds[oldIndex] + 0.035) return previous
+  if (oldIndex === 0 && y < thresholds[0] + 0.035) return previous
+  if (oldIndex === levels.length - 1 && y >= thresholds[2] - 0.035) return previous
+  return levels[Math.min(3, Math.floor(y * 4))]
 }
 
 /** Maps one MediaPipe normalized point to its instrument and gain state. */
@@ -100,7 +95,7 @@ function PixelIcon({ section }: { section: Section }) {
           <i className="drum-stick" />
         </>
       )}
-      {(section === "BASS" || section === "GUITAR") && (
+      {(section === "BASS" || section === "STRINGS") && (
         <>
           <i
             className={`guitar-icon-body guitar-icon-body--${section.toLowerCase()}`}
@@ -110,11 +105,6 @@ function PixelIcon({ section }: { section: Section }) {
       )}
     </span>
   )
-}
-
-/** Input: an instrument section. Output: its top navigation label. */
-function OrchestraSectionLabel({ name }: { name: Section }) {
-  return <div className="section-label">{name}</div>
 }
 
 /**
@@ -146,42 +136,6 @@ function SongProgressBar({ currentTime, duration }: { currentTime: number; durat
  * Output: one of the two independent hand status cards.
  * Processing: shows the selected section and volume, or a simulation prompt.
  */
-function HandInstructionCard({
-  hand,
-  state,
-}: {
-  hand: "LEFT" | "RIGHT"
-  state: HandState
-}) {
-  const section = state.section ?? (hand === "LEFT" ? "DRUMS" : "VOCALS")
-  return (
-    <article
-      className={`instruction-card ${
-        !state.section ? "instruction-card--idle" : ""
-      }`}
-    >
-      <div className="card-topline">
-        <span>{hand} HAND</span>
-        <span
-          className={`status-pip ${state.section ? "status-pip--live" : ""}`}
-        />
-      </div>
-      <div className="instruction-body">
-        <PixelIcon section={section} />
-        <div>
-          <strong>{state.section ?? "NO HAND"}</strong>
-          <span
-            className={`volume-copy volume-copy--${volumeColor[state.volume]}`}
-          >
-            {state.section ? `${state.volume}${state.confidence === null ? "" : ` · ${Math.round(state.confidence * 100)}%`}` : "WAITING FOR HAND"}
-          </span>
-          {state.section && <small className="hand-coordinates">X {state.x.toFixed(2)} · Y {state.y.toFixed(2)}</small>}
-        </div>
-      </div>
-    </article>
-  )
-}
-
 /** Input: a hand volume or no active hand. Output: the matching spotlight style. */
 function DynamicSpotlight({ intensity }: { intensity: Volume | null }) {
   return (
@@ -235,7 +189,7 @@ function OrchestraPerformer({ section }: { section: Section }) {
           <i className="mic-cord" />
         </>
       )}
-      {(section === "BASS" || section === "GUITAR") && (
+      {(section === "BASS" || section === "STRINGS") && (
         <>
           <i className={`instrument guitar guitar--${section.toLowerCase()}`} />
           <i className="guitar-neck" />
@@ -249,16 +203,25 @@ function OrchestraPerformer({ section }: { section: Section }) {
 function InstrumentPlatform({
   section,
   intensity,
+  cue,
+  currentTime,
 }: {
   section: Section
   intensity: Volume | null
+  cue: InstructionCue | undefined
+  currentTime: number
 }) {
+  const remaining = cue ? Math.max(0, Math.ceil(cue.start + cue.duration - currentTime)) : 0
   return (
     <div
       className={`orchestra-bay ${
         intensity ? `orchestra-bay--${intensity.toLowerCase()}` : ""
       }`}
     >
+      {cue && <div className={`cue-marker cue-marker--${cue.level.toLowerCase()}`} aria-label={`${section} ${cue.level}, ${remaining} seconds remaining`}>
+        <span>{remaining}</span>
+        <small>{section} · {cue.level}</small>
+      </div>}
       <DynamicSpotlight intensity={intensity} />
       <div className="platform-shadow" />
       <div className="platform">
@@ -271,53 +234,46 @@ function InstrumentPlatform({
   )
 }
 
-/** Input: volume level and active status. Output: an accessible color lamp button. */
+/** Input: volume level and active status. Output: a decorative color lamp. */
 function VolumeLevelIndicator({
   level,
   active,
-  onSelect,
 }: {
   level: Volume
   active: boolean
-  onSelect: () => void
 }) {
   return (
-    <button
+    <div
       className={`volume-lamp volume-lamp--${volumeColor[level]} ${
         active ? "volume-lamp--active" : ""
       }`}
-      onClick={onSelect}
-      aria-label={`${level} volume`}
-      type="button"
+      aria-label={`${level} volume${active ? " active" : ""}`}
     >
       <span />
-    </button>
+    </div>
   )
 }
 
 /**
- * Input: hand side, live state, and volume selection callback.
- * Output: the three edge lamps used to show or set that hand's volume.
- * Processing: marks the current level and forwards manual level selection.
+ * Input: hand side and live state.
+ * Output: four edge lamps showing that hand's current volume level.
+ * Processing: highlights the color band matching the tracked Y coordinate.
  */
 function HandPositionIndicator({
   side,
   state,
-  onVolumeChange,
 }: {
   side: "LEFT" | "RIGHT"
   state: HandState
-  onVolumeChange: (level: Volume) => void
 }) {
   return (
     <aside className={`hand-meter hand-meter--${side.toLowerCase()}`}>
       <span className="meter-hand">{side.slice(0, 1)}</span>
-      {(["HIGH", "MEDIUM", "LOW"] as Volume[]).map((level) => (
+      {(["GREEN", "YELLOW", "ORANGE", "RED"] as Volume[]).map((level) => (
         <VolumeLevelIndicator
           key={level}
           level={level}
           active={state.section !== null && state.volume === level}
-          onSelect={() => onVolumeChange(level)}
         />
       ))}
     </aside>
@@ -388,21 +344,26 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [score, setScore] = useState(0)
+  const scoreValue = useRef(0)
+  const scoreProgress = useRef(new Map<string, { correct: number; wrong: number; awarded: number; penalized: number }>())
+  const handStateRef = useRef<{ left: HandState; right: HandState } | null>(null)
   const [left, setLeft] = useState<HandState>({
     section: null,
-    volume: "HIGH",
+    volume: "RED",
     x: 0.2,
     y: 0.2,
     confidence: null,
   })
   const [right, setRight] = useState<HandState>({
     section: null,
-    volume: "MEDIUM",
+    volume: "RED",
     x: 0.8,
     y: 0.5,
     confidence: null,
   })
   const [shiftHeld, setShiftHeld] = useState(false)
+  handStateRef.current = { left, right }
 
   // Load and decode all six local stems only after the player enters the game.
   useEffect(() => {
@@ -453,12 +414,46 @@ export default function App() {
     }
   }, [handTracker, started, inputMode, cameraRetry])
 
-  // Poll the AudioContext clock for the visible song progress display.
+  // Poll the shared audio clock and award points after a one-second placement grace period.
   useEffect(() => {
     if (!playing) return
+    let previousTime = audio.getCurrentTime()
     const timer = window.setInterval(() => {
       const time = audio.getCurrentTime()
+      const delta = Math.max(0, Math.min(0.25, time - previousTime))
+      previousTime = time
       setCurrentTime(time)
+      if (delta > 0 && handStateRef.current) {
+        const hands = [handStateRef.current.left, handStateRef.current.right]
+        const cues = INSTRUCTION_TIMELINE.filter((cue) => time >= cue.start && time < cue.start + cue.duration)
+        let nextScore: number | null = null
+        cues.forEach((cue) => {
+          const progress = scoreProgress.current.get(cue.id) ?? { correct: 0, wrong: 0, awarded: 0, penalized: 0 }
+          const visible = hands.filter((hand) => hand.section !== null)
+          const matching = visible.some((hand) => hand.section === cue.section && hand.volume === cue.level)
+          if (matching) {
+            progress.correct += delta
+            progress.wrong = 0
+            progress.penalized = 0
+            const rewardTotal = Math.max(0, Math.floor(progress.correct - 1))
+            if (rewardTotal > progress.awarded) {
+              nextScore = (nextScore ?? scoreValue.current) + (rewardTotal - progress.awarded) * 100
+              progress.awarded = rewardTotal
+            }
+          } else if (visible.length > 0) {
+            progress.wrong += delta
+            progress.correct = 0
+            progress.awarded = 0
+            const penaltyTotal = Math.max(0, Math.floor(progress.wrong - 2))
+            if (penaltyTotal > progress.penalized) {
+              nextScore = Math.max(0, (nextScore ?? scoreValue.current) - (penaltyTotal - progress.penalized) * 25)
+              progress.penalized = penaltyTotal
+            }
+          }
+          scoreProgress.current.set(cue.id, progress)
+        })
+        if (nextScore !== null) { scoreValue.current = nextScore; setScore(nextScore) }
+      }
       if (!audio.isPlaying) setPlaying(false)
     }, 100)
     return () => window.clearInterval(timer)
@@ -478,33 +473,37 @@ export default function App() {
     }
   }, [])
 
-  // Apply live hand levels to the four interactive stems; Piano and Other are excluded.
+  const activeCues = useMemo(
+    () => INSTRUCTION_TIMELINE.filter((cue) => currentTime >= cue.start && currentTime < cue.start + cue.duration),
+    [currentTime],
+  )
+
+  // Active cues enable hand control; every unprompted or unattended section stays red.
   useEffect(() => {
     if (audioStatus !== "ready") return
-    const activeBySection = new Map<Section, Volume>()
-    ;[left, right].forEach((hand) => {
-      if (!hand.section) return
-      const current = activeBySection.get(hand.section)
-      if (!current || volumeStrength[hand.volume] > volumeStrength[current]) {
-        activeBySection.set(hand.section, hand.volume)
-      }
-    })
-    activeBySection.forEach((volume, section) => {
+    sections.forEach((section) => {
+      const cue = activeCues.find((item) => item.section === section)
+      const handsOnSection = [left, right].filter((hand) => hand.section === section)
+      const volume = cue && handsOnSection.length
+        ? handsOnSection.reduce((strongest, hand) => volumeStrength[hand.volume] > volumeStrength[strongest] ? hand.volume : strongest, "RED" as Volume)
+        : "RED"
       audio.setInteractiveGain(trackForSection[section], volume)
     })
-  }, [audio, audioStatus, left.section, left.volume, right.section, right.volume])
+  }, [audio, audioStatus, activeCues, left, right])
 
   const sectionIntensity = useMemo(() => {
     const intensity = new Map<Section, Volume>()
     ;[left, right].forEach((hand) => {
       if (!hand.section) return
+      if (!activeCues.some((cue) => cue.section === hand.section)) return
       const current = intensity.get(hand.section)
       if (!current || volumeStrength[hand.volume] > volumeStrength[current]) {
         intensity.set(hand.section, hand.volume)
       }
     })
     return intensity
-  }, [left, right])
+    sections.forEach((section) => { if (!intensity.has(section)) intensity.set(section, "RED") })
+  }, [left, right, activeCues])
 
   /** Input: pointer event within the game. Output: selected hand state and stem gain. */
   const handleStageMove = (event: React.PointerEvent<HTMLElement>) => {
@@ -518,7 +517,7 @@ export default function App() {
       Math.min(0.999, (event.clientY - bounds.top) / bounds.height),
     )
     const section = sections[Math.floor(x * sections.length)]
-    const volume = y < 0.34 ? "HIGH" : y < 0.67 ? "MEDIUM" : "LOW"
+    const volume: Volume = y < 0.25 ? "GREEN" : y < 0.5 ? "YELLOW" : y < 0.75 ? "ORANGE" : "RED"
     const next: HandState = {
       section,
       volume,
@@ -528,20 +527,6 @@ export default function App() {
     }
     if (shiftHeld) setRight(next)
     else setLeft(next)
-  }
-
-  /** Input: hand side and requested level. Processing: combines same-section hands by strongest level. */
-  const setHandVolume = (side: "left" | "right", volume: Volume) => {
-    const hand = side === "left" ? left : right
-    const otherHand = side === "left" ? right : left
-    if (hand.section) {
-      const effective = otherHand.section === hand.section && volumeStrength[otherHand.volume] > volumeStrength[volume]
-        ? otherHand.volume
-        : volume
-      audio.setInteractiveGain(trackForSection[hand.section], effective)
-    }
-    if (side === "left") setLeft({ ...left, volume })
-    else setRight({ ...right, volume })
   }
 
   /** Input: play/pause button action. Output: synchronized stem playback or a visible error. */
@@ -565,24 +550,14 @@ export default function App() {
     }
   }
 
-  if (!started) return <WelcomeScreen onStart={() => setStarted(true)} />
+  if (!started) return <WelcomeScreen onStart={() => { scoreValue.current = 0; setScore(0); scoreProgress.current.clear(); setStarted(true) }} />
 
   return (
     <main className="game-shell">
       <div className="game" onPointerMove={inputMode === "simulation" ? handleStageMove : undefined}>
         <header>
-          <div className="section-nav">
-            {sections.map((section) => (
-              <OrchestraSectionLabel key={section} name={section} />
-            ))}
-          </div>
           <SongProgressBar currentTime={currentTime} duration={duration} />
         </header>
-
-        <div className="instruction-pair">
-          <HandInstructionCard hand="LEFT" state={left} />
-          <HandInstructionCard hand="RIGHT" state={right} />
-        </div>
 
         <button
           className="brand"
@@ -591,17 +566,13 @@ export default function App() {
         >
           MUSICGRID
         </button>
-        <div className="control-hint">
-          {shiftHeld ? "RIGHT HAND ACTIVE" : "LEFT HAND ACTIVE"}{" "}
-          <span>{inputMode === "camera" ? "LIVE CAMERA · TRACK BOTH HANDS" : "MOUSE SIMULATION · HOLD SHIFT TO SWITCH"}</span>
-        </div>
+        <div className="score-display" aria-live="polite"><small>SCORE</small><strong>{score.toLocaleString()}</strong></div>
 
         <div className="transport-controls" onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" onClick={handlePlayback} disabled={audioStatus !== "ready"}>
             {audioStatus === "loading" ? "LOADING STEMS…" : playing ? "PAUSE" : "PLAY SONG"}
           </button>
           <button type="button" onClick={() => { audio.stop(); setCurrentTime(0); setPlaying(false) }} disabled={audioStatus !== "ready"}>STOP</button>
-          <span>{audioStatus === "error" ? `AUDIO ERROR: ${audioError}` : inputMode === "camera" ? "LIVE CAMERA · MUSIC FOLLOWS BOTH HANDS" : "MOUSE SIMULATION · MOVE MOUSE · SHIFT SWITCHES HAND"}</span>
         </div>
 
         {left.section && <div className={`hand-marker hand-marker--left hand-marker--${inputMode}`} style={{ left: `${left.x * 100}%`, top: `${left.y * 100}%` }} aria-label="Left hand position" />}
@@ -610,12 +581,10 @@ export default function App() {
         <HandPositionIndicator
           side="LEFT"
           state={left}
-          onVolumeChange={(volume) => setHandVolume("left", volume)}
         />
         <HandPositionIndicator
           side="RIGHT"
           state={right}
-          onVolumeChange={(volume) => setHandVolume("right", volume)}
         />
 
         <section className="orchestra" aria-label="Orchestra stage">
@@ -624,6 +593,8 @@ export default function App() {
               key={section}
               section={section}
               intensity={sectionIntensity.get(section) ?? null}
+              cue={activeCues.find((item) => item.section === section)}
+              currentTime={currentTime}
             />
           ))}
         </section>

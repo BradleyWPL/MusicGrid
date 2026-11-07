@@ -11,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-Open the local URL printed by Vite (normally `http://localhost:8443`). Click **Begin Performance** and allow camera access when your browser asks. Place both hands in view of the camera. Their horizontal positions select Vocals, Drums, Bass, or Guitar; vertical positions select high, medium, or low volume. The two cards display the detected section, volume, confidence, and normalized X/Y coordinates. Use the playback controls to play, pause, or stop the song.
+Open the local URL printed by Vite (normally `http://localhost:8443`). Click **Begin Performance** and allow camera access when your browser asks. Place both hands in view of the camera. Horizontal position selects Vocals, Drums, Bass, or Strings; vertical position selects green, yellow, orange, or red volume. During playback, one or two timed cue circles appear above the active podiums. Match the section and color before the countdown ends to earn points. The first second gives time to move; correct matching earns 100 points per full second after that, and a sustained mismatch can subtract 25 points per second after a two-second grace period. Unprompted sections stay at their quiet red level. Use the playback controls to play, pause, or stop the song.
 
 If the browser denies access, allow Camera for `localhost` in the address-bar site controls and press **Retry Camera**. Also check that your operating system allows the browser to use the camera.
 
@@ -21,7 +21,7 @@ Camera access requires `localhost` during development or HTTPS after deployment.
 
 ## Audio behavior
 
-All six supplied stems are scheduled on a shared Web Audio clock. Vocals, Drums, Bass, and Guitar respond to the detected hand levels. Piano and Other remain at the fixed background gain configured in `src/services/audio/AudioEngine.ts`.
+All six supplied stems are scheduled on a shared Web Audio clock. Vocals, Drums, Bass, and Strings respond to hand levels while their cue is active. Strings applies the same gain to the Guitar and Other stems. Piano remains at the fixed background gain configured in `src/services/audio/AudioEngine.ts`; all other stems start and rest at the quiet red gain. The editable cue data lives in `src/data/instructions.ts` and is based on the supplied stem arrangement and requested song moments.
 
 ## Hand tracking and attribution
 

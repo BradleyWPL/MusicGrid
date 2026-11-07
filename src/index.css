@@ -57,7 +57,7 @@ header {
   position: absolute;
   inset: 0 0 auto;
   z-index: 20;
-  height: 15.5%;
+  height: 13.5%;
   border-bottom: 1px solid #6f503647;
   background: linear-gradient(#050505f2, #090706d9 74%, transparent);
 }
@@ -83,8 +83,8 @@ header {
   display: flex;
   align-items: center;
   gap: 4%;
-  width: 70%;
-  margin: 1.5% auto 0;
+  width: 68%;
+  margin: 4.6% auto 0;
 }
 .song-name {
   display: flex;
@@ -121,41 +121,27 @@ header {
 }
 .time { color: #89847f; font-size: clamp(5px, 0.48vw, 9px); white-space: nowrap; }
 
-.instruction-pair {
+.cue-marker {
   position: absolute;
-  z-index: 22;
-  top: 17%;
+  z-index: 8;
+  top: -5%;
   left: 50%;
-  display: flex;
-  gap: 1.1vw;
+  display: grid;
+  place-items: center;
+  width: clamp(36px, 3.5vw, 64px);
+  aspect-ratio: 1;
+  border: 3px solid currentColor;
+  border-radius: 50%;
+  background: #0c0908eF;
+  box-shadow: 0 0 15px currentColor, inset 0 0 10px #000;
+  color: #e15a4e;
   transform: translateX(-50%);
 }
-.instruction-card {
-  width: clamp(155px, 14vw, 270px);
-  padding: 0.65vw;
-  border: 2px solid #70563c;
-  background: #0b0908e8;
-  box-shadow: inset 0 0 0 2px #1f1812, 5px 5px 0 #0008;
-}
-.instruction-card--idle { opacity: .65; }
-.card-topline {
-  display: flex;
-  justify-content: space-between;
-  padding-bottom: 0.4vw;
-  border-bottom: 1px solid #59442f;
-  color: #948b82;
-  font-size: clamp(5px, 0.5vw, 9px);
-  letter-spacing: 0.15em;
-}
-.status-pip { width: 6px; height: 6px; background: #4b4540; }
-.status-pip--live { background: #64bd5c; box-shadow: 0 0 7px #6ae05e; }
-.instruction-body { display: flex; align-items: center; gap: 1vw; padding-top: 0.5vw; }
-.instruction-body strong { display: block; font: 400 clamp(8px, 0.8vw, 15px) "Press Start 2P"; }
-.volume-copy { display: block; margin-top: .38vw; font-size: clamp(6px, .5vw, 10px); letter-spacing: .16em; }
-.volume-copy--green { color: #62c866; }
-.volume-copy--yellow { color: #eccd54; }
-.volume-copy--red { color: #d95b4e; }
-.hand-coordinates { display: block; margin-top: .25vw; color: #897d70; font-size: clamp(5px, .42vw, 8px); letter-spacing: .06em; }
+.cue-marker span { font: 400 clamp(10px, 1vw, 18px) "Press Start 2P"; }
+.cue-marker small { position: absolute; top: calc(100% + 5px); padding: 3px 5px; background: #080706d9; color: currentColor; font-size: clamp(5px, .42vw, 8px); letter-spacing: .08em; white-space: nowrap; }
+.cue-marker--orange { color: #ed914c; }
+.cue-marker--yellow { color: #ecd452; }
+.cue-marker--green { color: #64d36a; }
 
 .pixel-icon { position: relative; display: block; width: 28px; height: 28px; flex: 0 0 28px; }
 .pixel-icon i { position: absolute; display: block; }
@@ -185,22 +171,13 @@ header {
   background: transparent;
   font: 400 clamp(8px, .72vw, 14px) "Press Start 2P";
   letter-spacing: .12em;
-  cursor: pointer;
 }
-.control-hint {
-  position: absolute;
-  z-index: 20;
-  top: 10.2%;
-  right: 2.4%;
-  color: #bba58b;
-  font-size: clamp(5px, .43vw, 8px);
-}
-.control-hint span { margin-left: .5rem; color: #5f574f; }
-
-.transport-controls { position: absolute; z-index: 26; top: 12.2%; left: 50%; display: flex; align-items: center; gap: .5rem; transform: translateX(-50%); white-space: nowrap; }
+.score-display { position: absolute; z-index: 26; top: 2.3%; right: 2.4%; display: flex; align-items: baseline; gap: .6rem; color: #d6a053; text-shadow: 0 0 8px #b57537; }
+.score-display small { color: #8b7259; font-size: clamp(5px, .43vw, 8px); letter-spacing: .18em; }
+.score-display strong { font: 400 clamp(8px, .8vw, 15px) "Press Start 2P"; }
+.transport-controls { position: absolute; z-index: 26; top: 10%; left: 50%; display: flex; align-items: center; gap: .5rem; transform: translateX(-50%); white-space: nowrap; }
 .transport-controls button { padding: .28rem .5rem; border: 1px solid #755739; color: #e7d7c1; background: #17100c; font: 400 clamp(5px, .42vw, 8px) "Press Start 2P"; cursor: pointer; }
 .transport-controls button:disabled { opacity: .55; cursor: wait; }
-.transport-controls span { color: #9f8c75; font-size: clamp(5px, .4vw, 8px); letter-spacing: .04em; }
 .hand-marker { position: absolute; z-index: 19; width: clamp(7px, .65vw, 12px); height: clamp(7px, .65vw, 12px); border: 2px solid #f5d8ad; transform: translate(-50%, -50%); box-shadow: 0 0 7px #edbd7d; pointer-events: none; }
 .hand-marker--left { background: #64bd5c; }
 .hand-marker--right { background: #72aadd; }
@@ -230,21 +207,22 @@ header {
   opacity: .35;
   transition: opacity 250ms, filter 250ms;
 }
-.spotlight--low {
+.spotlight--red {
   opacity: .5;
   filter: drop-shadow(0 0 5px #ba65452f);
   background: linear-gradient(105deg, transparent 20%, #a76d4510 40%, #d38b5540 53%, transparent 80%);
 }
-.spotlight--medium {
+.spotlight--orange {
   opacity: .74;
   filter: drop-shadow(0 0 9px #d6a25542);
   background: linear-gradient(105deg, transparent 20%, #c6934518 40%, #ecc96a48 53%, transparent 80%);
 }
-.spotlight--high {
+.spotlight--green {
   opacity: 1;
   filter: drop-shadow(0 0 12px #dbab6555);
   background: linear-gradient(105deg, transparent 20%, #d7a65a18 40%, #ffd9954a 53%, transparent 80%);
 }
+.spotlight--yellow { opacity: .86; filter: drop-shadow(0 0 10px #ecc96a48); background: linear-gradient(105deg, transparent 20%, #c6934518 40%, #ecc96a48 53%, transparent 80%); }
 .platform-shadow {
   position: absolute;
   left: 4%;
@@ -268,18 +246,19 @@ header {
   transform: perspective(270px) rotateX(3deg);
   transition: filter 250ms, box-shadow 250ms;
 }
-.orchestra-bay--low .platform {
+.orchestra-bay--red .platform {
   filter: brightness(.82) saturate(.9);
   box-shadow: inset 0 5px #754329, inset 0 -6px #21110b, 0 7px 0 #180d09, 0 0 7px #8f49332e;
 }
-.orchestra-bay--medium .platform {
+.orchestra-bay--orange .platform {
   filter: brightness(1.08) saturate(1.03);
   box-shadow: inset 0 5px #916037, inset 0 -6px #21110b, 0 7px 0 #180d09, 0 0 13px #b4873f38;
 }
-.orchestra-bay--high .platform {
+.orchestra-bay--green .platform {
   filter: brightness(1.3) saturate(1.08);
   box-shadow: inset 0 5px #a16b3c, inset 0 -6px #21110b, 0 7px 0 #180d09, 0 0 20px #ba794c44;
 }
+.orchestra-bay--yellow .platform { filter: brightness(1.17) saturate(1.04); box-shadow: inset 0 5px #987044, inset 0 -6px #21110b, 0 7px 0 #180d09, 0 0 16px #c29a4a3d; }
 .platform-front {
   position: absolute;
   inset: 44% 0 0;
@@ -302,9 +281,10 @@ header {
 }
 
 .performer { position: absolute; left: 50%; bottom: 70%; transform: translateX(-50%); filter: drop-shadow(5px 7px 0 #0008); transition: filter 250ms; }
-.orchestra-bay--low .performer { filter: brightness(.8) saturate(.88) drop-shadow(5px 7px 0 #0008); }
-.orchestra-bay--medium .performer { filter: brightness(1.06) drop-shadow(0 0 4px #e2ba6a38) drop-shadow(5px 7px 0 #0008); }
-.orchestra-bay--high .performer { filter: brightness(1.22) drop-shadow(0 0 7px #ffd59766) drop-shadow(5px 7px 0 #0008); }
+.orchestra-bay--red .performer { filter: brightness(.8) saturate(.88) drop-shadow(5px 7px 0 #0008); }
+.orchestra-bay--orange .performer { filter: brightness(.96) drop-shadow(0 0 3px #e2a26a38) drop-shadow(5px 7px 0 #0008); }
+.orchestra-bay--yellow .performer { filter: brightness(1.12) drop-shadow(0 0 5px #e2ba6a38) drop-shadow(5px 7px 0 #0008); }
+.orchestra-bay--green .performer { filter: brightness(1.22) drop-shadow(0 0 7px #ffd59766) drop-shadow(5px 7px 0 #0008); }
 .standing { width: 80px; height: 120px; }
 .standing i { position: absolute; display: block; }
 .hair { z-index: 3; left: 26px; top: 3px; width: 32px; height: 29px; background: #241a17; box-shadow: -5px 7px #33231d, 6px 5px #171211; }
@@ -312,7 +292,7 @@ header {
 .torso { left: 25px; top: 39px; width: 38px; height: 49px; background: #d7d0bc; border: 5px solid #403831; box-shadow: inset 9px 0 #948d81; }
 .standing--vocals .torso { background: #923b36; border-color: #3e2524; box-shadow: inset 9px 0 #c05c4f; }
 .standing--bass .torso { background: #456058; border-color: #253a35; }
-.standing--guitar .torso { background: #76513b; border-color: #432f25; }
+.standing--strings .torso { background: #76513b; border-color: #432f25; }
 .standing--piano .torso { background: #4b566e; border-color: #292f3d; }
 .standing--other .torso { background: #665071; border-color: #392d40; }
 .leg { top: 83px; width: 14px; height: 34px; background: #282527; border: 4px solid #171517; }
@@ -422,11 +402,14 @@ header {
 .volume-lamp span { width: 45%; aspect-ratio: 1; background: #333; }
 .volume-lamp--green span { background: #214826; }
 .volume-lamp--yellow span { background: #52491f; }
+.volume-lamp--orange span { background: #593a24; }
 .volume-lamp--red span { background: #4a201d; }
 .volume-lamp--green.volume-lamp--active { border-color: #5a8a5d; }
 .volume-lamp--green.volume-lamp--active span { background: #64d36a; box-shadow: 0 0 13px #64d36a; }
 .volume-lamp--yellow.volume-lamp--active { border-color: #9d8a43; }
 .volume-lamp--yellow.volume-lamp--active span { background: #ecd452; box-shadow: 0 0 13px #ecd452; }
+.volume-lamp--orange.volume-lamp--active { border-color: #a76736; }
+.volume-lamp--orange.volume-lamp--active span { background: #ed914c; box-shadow: 0 0 13px #ed914c; }
 .volume-lamp--red.volume-lamp--active { border-color: #8d4a42; }
 .volume-lamp--red.volume-lamp--active span { background: #e15a4e; box-shadow: 0 0 13px #e15a4e; }
 

@@ -1,4 +1,6 @@
 export type TrackId = "vocals" | "drums" | "bass" | "guitar" | "piano" | "other"
+export type InteractiveSection = "vocals" | "drums" | "bass" | "strings"
+export type VolumeLevel = "RED" | "ORANGE" | "YELLOW" | "GREEN"
 
 const trackFiles: Record<TrackId, string> = {
   vocals: "/assets/audio/vocals.mp3",
@@ -18,7 +20,7 @@ const backgroundGain = 0.25
  * Outputs: synchronized audio and song time, routed through per-stem GainNodes.
  * Processing: streams compressed files instead of decoding their full four-minute
  * durations into large PCM buffers. All play calls are issued in one task against
- * a shared AudioContext; Piano and Other always keep the configured fixed gain.
+ * a shared AudioContext; Piano keeps fixed gain and Strings controls Guitar and Other.
  */
 export class AudioEngine {
   private context: AudioContext | null = null
@@ -46,7 +48,7 @@ export class AudioEngine {
         element.load()
 
         const gain = this.context!.createGain()
-        gain.gain.value = id === "piano" || id === "other" ? backgroundGain : 0.5
+        gain.gain.value = id === "piano" ? backgroundGain : 0.18
         const source = this.context!.createMediaElementSource(element)
         source.connect(gain)
         gain.connect(this.context!.destination)
@@ -104,18 +106,21 @@ export class AudioEngine {
   }
 
   /**
-   * Input: an interactive track and LOW/MEDIUM/HIGH.
-   * Output: a smoothed gain update; background stems are excluded by type.
-   * Processing: maps volume names to linear gain values and ramps without clicks.
+   * Input: an interactive orchestra section and one of its four cue levels.
+   * Output: smoothed gain updates; Strings addresses both string stems.
+   * Processing: maps color levels to linear gain and ramps without clicks.
    */
   setInteractiveGain(
-    track: Exclude<TrackId, "piano" | "other">,
-    level: "LOW" | "MEDIUM" | "HIGH",
+    track: InteractiveSection,
+    level: VolumeLevel,
   ) {
-    const value = { LOW: 0.18, MEDIUM: 0.5, HIGH: 0.88 }[level]
-    const gain = this.gains.get(track)
-    if (!gain || !this.context) return
-    gain.gain.setTargetAtTime(value, this.context.currentTime, 0.08)
+    const value = { RED: 0.12, ORANGE: 0.3, YELLOW: 0.58, GREEN: 0.88 }[level]
+    const tracks: TrackId[] = track === "strings" ? ["guitar", "other"] : [track]
+    if (!this.context) return
+    tracks.forEach((id) => {
+      const gain = this.gains.get(id)
+      if (gain) gain.gain.setTargetAtTime(value, this.context!.currentTime, 0.08)
+    })
   }
 
   /** Input: none. Output: vocals currentTime, used as the shared song clock. */

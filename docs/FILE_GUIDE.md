@@ -6,8 +6,9 @@ This guide describes the files that make up the application and the development 
 
 | File | Input | Output | Processing |
 | --- | --- | --- | --- |
-| `src/App.tsx` | React events, live camera frames from the tracker, optional pointer input, and audio status | Welcome/game screens, normalized left/right hand X/Y values, two hand cards, four orchestra bays, and transport controls | Uses the camera by default; maps both normalized hand positions to instrument and volume zones with boundary hysteresis. Mouse simulation is an optional fallback. |
-| `src/services/audio/AudioEngine.ts` | Six local MP3 files, playback commands, and interactive volume levels | Synchronized audio and current song time | Streams six media elements into individual Web Audio GainNodes and starts/pauses them together. Piano and Other keep a fixed gain of `0.25`; compressed files are not all decoded into full-length PCM buffers. |
+| `src/App.tsx` | React events, live camera frames from the tracker, optional pointer input, timed cues, and audio status | Camera game screen, normalized hand positions, four podiums, countdown cues, score, and transport | Maps hand X/Y to section and four volume colors; enables gain only for prompted sections. Gives a one-second scoring grace for correct placement and two seconds before mismatch penalties. |
+| `src/data/instructions.ts` | Song time, supplied stem arrangement, and requested emphasis anchors | Editable sequence of 2–5-second color cues for Vocals, Drums, Bass, and Strings | Schedules no more than two simultaneous cues. Unlisted sections remain red; Piano is a fixed background stem. |
+| `src/services/audio/AudioEngine.ts` | Six local MP3 files, playback commands, and four color levels | Synchronized audio and song time | Streams six media elements into Web Audio GainNodes and starts/pauses them together. Strings controls Guitar and Other together; Piano remains at fixed gain `0.25`; other stems default to red gain. |
 | `src/services/handTracking/HandTrackingService.ts` | User-approved camera stream from an HTML video element | Left/right hand labels, confidence, normalized mirrored X/Y, and camera/tracking status | Uses Google's MediaPipe Hand Landmarker in VIDEO mode with a maximum of two hands; smooths landmark-derived palm centers. No face model or detector is loaded. |
 | `src/main.tsx` | `index.html` root element and the `App` React component | Mounted React application | Creates the React root, loads global CSS, and renders the app under StrictMode. |
 | `src/index.css` | Semantic component class names and viewport dimensions | Pixel-art stage, responsive layout, typography, lighting, controls, and state colors | Uses layered CSS gradients, shapes, and transitions to preserve the Figma visual style without an external runtime renderer. |
@@ -33,9 +34,9 @@ This guide describes the files that make up the application and the development 
 | `public/assets/audio/vocals.mp3` | Supplied vocals stem | Vocals audio buffer | Loaded by `AudioEngine`; controlled by the Vocals section. |
 | `public/assets/audio/drums.mp3` | Supplied drums stem | Drums audio buffer | Loaded by `AudioEngine`; controlled by the Drums section. |
 | `public/assets/audio/bass.mp3` | Supplied bass stem | Bass audio buffer | Loaded by `AudioEngine`; controlled by the Bass section. |
-| `public/assets/audio/guitar.mp3` | Supplied guitar stem | Guitar audio buffer | Loaded by `AudioEngine`; controlled by the Guitar section. |
+| `public/assets/audio/guitar.mp3` | Supplied guitar stem | Guitar audio stream | Loaded by `AudioEngine`; controlled together with Other from the Strings podium. |
 | `public/assets/audio/piano.mp3` | Supplied piano stem | Piano audio buffer | Plays continuously at fixed background gain; never controlled by the hands. |
-| `public/assets/audio/other.mp3` | Supplied Other stem | Other audio buffer | Plays continuously at fixed background gain; never controlled by the hands. |
+| `public/assets/audio/other.mp3` | Supplied Other stem | Other audio stream | Controlled together with Guitar from the Strings podium. |
 | `public/favicon.svg` | Static SVG asset | Browser tab icon | Served directly from `public`. |
 | `public/models/hand_landmarker.task` | Bundled Google HandLandmarker model | On-device two-hand landmark inference | Loaded locally by `HandTrackingService`; no model download is needed at runtime. |
 | `public/assets/mediapipe/wasm/*` | MediaPipe Tasks Vision WASM JS/runtime files | Local inference runtime | Bundled locally so the camera path does not depend on a runtime CDN request. |
@@ -50,4 +51,4 @@ This guide describes the files that make up the application and the development 
 
 ## Current runtime boundary
 
-The current release requests webcam access, tracks both hands, and controls the four musical stems by X/Y position; it also retains mouse simulation as a fallback. Calibration UI, generated/editable musical instructions, and scoring remain future work.
+The current release requests webcam access, tracks both hands, and uses hand X/Y position to follow the active timed cue; mouse simulation remains available as a fallback. The cue list is manually editable in `src/data/instructions.ts`; its durations are at least two seconds, and at most two cues run together.
